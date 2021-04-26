@@ -1,0 +1,67 @@
+#!/usr/bin/expect -f
+ 
+log_user 0
+stty -echo
+set timeout 20
+ 
+set cmd [lindex $argv 0]
+set query [lindex $argv end]
+ 
+set maxpwtries 3
+set backspaces ""
+ 
+eval spawn -noecho keepassxc-cli $cmd
+ 
+expect {
+    -re "Enter password to unlock.*:"   {
+        set loop True
+        set backspaces [string repeat "\b \b" 44]
+        while {$maxpwtries != 0} {
+            send_user "Please enter your database password:\t"
+            expect_user -re "(.*)\n"
+            set dbpw $expect_out(1,string)
+            send "$dbpw\r"
+ 
+            expect {
+                "Invalid credentials were provided" {
+                    set maxpwtries [incr maxpwtries -1]
+ 
+                    if {$maxpwtries == 0} {
+                        send_user "${backspaces}Reached the max number of password attempts. Check your config.\n"
+                        set backspaces [string repeat "\b \b" 65]
+                        exit 1
+ 
+                    } else {
+                         
+                        send_user "${backspaces}Incorrect Credentials. ${maxpwtries} attempts remaining. "
+ 
+                        set backspaces [string repeat "\b \b" 88]
+                         
+                        expect ">"
+                         
+                        send "$cmd\r"
+                        expect -re "Enter password to unlock.*:"
+                    }
+ 
+                }
+                ">" {
+                    break
+                }
+            }
+        }
+ 
+    }
+ 
+    ">"
+}
+ 
+send "$query\r"
+expect -re "\r\n(.*)\r\n"
+set pwout $expect_out(1,string)
+ 
+send "exit\r"
+expect eof
+ 
+set hideoutput [string repeat "\b \b" [string length $pwout]]
+send_user "${backspaces}$pwout${hideoutput}"
+exit 0
